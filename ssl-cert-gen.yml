@@ -1,0 +1,56 @@
+---
+  - hosts: certbot.domain.com
+    become: yes
+    gather_facts: no
+    vars: 
+      # ssl_domain: <- Get it's value during run time
+      certbot_email: user@domain.com 
+      # deploy_host:  <- Get it's value during run time
+      # deploy_host_user:  <- Get it's value during run time
+
+    tasks: 
+      - name: Generate SSL certificate for {{ ssl_domain }}                                                                                                                                                           
+        shell: certbot --non-interactive --agree-tos --email {{ certbot_email }} certonly --preferred-challenges dns --authenticator certbot-dns-standalone:dns-standalone -d {{ ssl_domain }}
+        register: ssl_gen
+        tags: sslgen
+
+      - name: Print output of certbot
+        debug: 
+          var: ssl_gen
+        tags: sslgen 
+
+      - name: Ensure required archive directory is present at {{ deploy_host }}
+        file: 
+          path: /etc/letsencrypt/archive/{{ ssl_domain }}
+          state: directory
+        delegate_to: "{{ deploy_host }}"
+        tags: rsync
+
+      - name: Ensure required live directory is present at {{ deploy_host }}
+        file: 
+          path: /etc/letsencrypt/live/{{ ssl_domain }}
+          state: directory
+        delegate_to: "{{ deploy_host }}"
+        tags: rsync
+
+      - name: Push SSL cert archive directory to {{ deploy_host }} for {{ ssl_domain }}  
+        command:  rsync -avz /etc/letsencrypt/archive/{{ ssl_domain }}/ root@{{ deploy_host }}:/etc/letsencrypt/archive/{{ ssl_domain }}
+        tags: rsync
+
+      - name: Push SSL cert live directory to {{ deploy_host }} for {{ ssl_domain }}  
+        command:  rsync -avz /etc/letsencrypt/live/{{ ssl_domain }}/ root@{{ deploy_host }}:/etc/letsencrypt/live/{{ ssl_domain }}
+        tags: rsync
+
+      - name: Fix directory permissions for letsencrypt archive
+        file: 
+          path: /etc/letsencrypt/archive
+          mode: '0700'
+        tags: now    
+        delegate_to: "{{ deploy_host }}"
+
+      - name: Fix directory permissions for letsencrypt live
+        file: 
+          path: /etc/letsencrypt/live
+          mode: '0700'
+        tags: now    
+        delegate_to: "{{ deploy_host }}"
